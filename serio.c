@@ -10,31 +10,71 @@
 #define POWERBAUD	B115200
 #define POWERDEV	"/dev/ttyUSB0"
 
-void log_rms(char *rms, char *line, int n) {
+//#define RMS2AMP(r)	(((double)r)/5.89)
+#define RMS2AMP(r)	(((double)r)/4.73-0.67)
+
+//static byte lookup[]={0xb7,0x11,0xad,0x3d,0x1b,0x3e,0xbe,0x15,0xbf,0x1f,0x9f,0x0ba,0xa6,0xb9,0xae,0x8e};
+
+double log_rms(char *rfile, char *line, int n) {
 	static short buf[1000];
 	static int bpos=0;
+	double rms=0.0;
 	short val;
 
 	if (bpos>=1000) {
-		long ms=0;
+		double ms=0;
 		FILE *fp;
-		for(bpos=0; bpos<1000; bpos++)
-			ms+=(long)buf[bpos]*(long)buf[bpos];
-		ms=(long)sqrt(ms/1000);
+		for(bpos=3; bpos<996; bpos++) {
+			// Keiser-bessel 7th order lpf, Fb=50Hz, Fs=1000Hz, M=7, Att=50dB. Generated from:
+			// http://www.arc.id.au/FilterDesign.html
+			double fil = 3 * (
+				(double)buf[bpos-3]*0.004768+
+				(double)buf[bpos-2]*0.034642+
+				(double)buf[bpos-1]*0.078350+
+				(double)buf[bpos]*0.100000+
+				(double)buf[bpos+1]*0.078350+
+				(double)buf[bpos+2]*0.034642+
+				(double)buf[bpos+3]*0.004768
+			);
+			ms+=fil*fil;
+		}
+		rms=sqrt(ms/1000);
 		bpos=0;
-		fp=fopen(rms, "a");
+		fp=fopen(rfile, "a");
 		if (fp) {
-			fprintf(fp, "%d: %ld\n", time(NULL), ms);
+			fprintf(fp, "%d: %.2lf\n", time(NULL), rms);
 			fclose(fp);
 		}
 	}
 	if (sscanf(line, "%hx", &val)==1) {
 		buf[bpos++]=val;
 	}
+	return rms;
+}
+
+char disp[11];
+int dlen=0;
+void write_amps(double rms) {
+	double amp = RMS2AMP(rms);
+	if (amp<0.0) amp=0.0;
+	int flr = (int)floor(amp);
+	int dec = (int)((amp-floor(amp))*100);
+	disp[0] = (char)((flr/100)%10)+'0';
+	disp[1] = (char)((flr/10)%10)+'0';
+	disp[2] = (char)(flr%10)+'0';
+	disp[3] = 0x40;
+	disp[4] = 'r';
+	disp[5] = (char)((dec/10)%10)+'0';
+	disp[6] = (char)(dec%10)+'0';
+	disp[7] = 0x0;
+	disp[8] = 'r';
+	disp[9] = 'A';
+	disp[10]= '\n';
+	dlen=11;
 }
 
 int main(int argc, char **argv) {
-	int arg, fd, n;
+	int arg, fd, n, d=0;
 	struct termios oio, tio = {0};
 	char line[40];
 	char *dev = POWERDEV;
@@ -79,20 +119,34 @@ int main(int argc, char **argv) {
 		if (line[0]=='-')
 			continue;
 		// log rms values if requested
-		if (rms)
-			log_rms(rms, line, n);
-		else
+		if (rms) {
+			double d = log_rms(rms, line, n);
+			if (d!=0.0) {
+				write_amps(d);
+			}
+		} else {
 			write(1, line, n);
-		// check for display messages, forward them
-		if (ioctl(0, FIONREAD, &n)<0) {
-			perror("checking stdin pipe");
-			break;
-		} else if (n>0) {
-			if ((n=read(0, line, sizeof(line)))>0) {
-				write(fd, line, n);
-			} else if (n==0) {
-				// EOF from controlling process, quit
+			// check for display messages, forward them
+			if (ioctl(0, FIONREAD, &n)<0) {
+				perror("checking stdin pipe");
 				break;
+			} else if (n>0) {
+				if ((n=read(0, line, sizeof(line)))>0) {
+					write(fd, line, n);
+				} else if (n==0) {
+					// EOF from controlling process, quit
+					break;
+				}
+			}
+		}
+		// clock out display chars (if any)
+		if(dlen) {
+			if (++d>=10) {
+				--dlen;
+				write(fd, &disp[dlen], 1);
+				//printf("%02x,", disp[dlen]);
+				fflush(stdout);
+				d=0;
 			}
 		}
 	}
