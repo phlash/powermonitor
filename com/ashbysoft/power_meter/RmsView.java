@@ -4,6 +4,7 @@ package com.ashbysoft.power_meter;
 import java.util.Vector;
 import java.util.TimeZone;
 import java.util.Calendar;
+import java.util.Formatter;
 
 import java.io.File;
 import java.io.FileReader;
@@ -98,21 +99,25 @@ public class RmsView extends Component
 		return false;
 	}
 
+	private String get_utc(long epoch) {
+		if(cal==null)
+			cal=Calendar.getInstance(TimeZone.getTimeZone("GMT"));
+		StringBuffer sb=new StringBuffer();
+		Formatter fmt=new Formatter(sb);
+
+		cal.setTimeInMillis(epoch);
+		fmt.format("%tc", cal);
+		return sb.toString();
+	}
+
 	public void actionPerformed(ActionEvent e) {
 		htime.stop();
 		if (loaded) {
 			float scl = scale();
 			int i=(int)((float)mpos*scl)+vstart;
-			measure = ""+samples[i]+"/"+dates[i];
+			measure = ""+samples[i]+"/"+get_utc(dates[i]);
 			repaint();
 		}
-	}
-
-	private String get_utc(long epoch) {
-		if(cal==null)
-			cal=Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-		cal.setTimeInMillis(epoch);
-		return ""+cal.get(Calendar.YEAR)+"-"+(cal.get(Calendar.MONTH)+1)+"-"+cal.get(Calendar.DAY_OF_MONTH)+" "+cal.get(Calendar.HOUR_OF_DAY)+":"+cal.get(Calendar.MINUTE);
 	}
 
 	public void paint(Graphics g) {
