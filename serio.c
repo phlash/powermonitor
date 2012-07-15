@@ -1,6 +1,7 @@
 /*A touch of serial I/O to interface with my power metering board.. */
 
 #include <stdio.h>
+#include <string.h>
 #include <termios.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -14,6 +15,8 @@
 #define RMS2AMP(r)	(((double)r)/4.73-0.67)
 
 //static byte lookup[]={0xb7,0x11,0xad,0x3d,0x1b,0x3e,0xbe,0x15,0xbf,0x1f,0x9f,0x0ba,0xa6,0xb9,0xae,0x8e};
+
+static char lline[80];
 
 double log_rms(char *rfile, char *line, int n) {
 	static short buf[1000];
@@ -42,7 +45,7 @@ double log_rms(char *rfile, char *line, int n) {
 		bpos=0;
 		fp=fopen(rfile, "a");
 		if (fp) {
-			fprintf(fp, "%d: %.2lf\n", time(NULL), rms);
+			fprintf(fp, "%d: %.2lf %s\n", time(NULL), rms, lline);
 			fclose(fp);
 		}
 	}
@@ -115,11 +118,12 @@ int main(int argc, char **argv) {
 
 	// read lines from power meter, print 'em
 	while ((n=read(fd, line, sizeof(line)))>0) {
-		// skip lines starting with '-'
-		if (line[0]=='-')
-			continue;
+		// retain last line starting with '-'
+		if (line[0]=='-') {
+			strncpy(lline, line, sizeof(lline)-1);
+			lline[n-1<sizeof(lline)-1?n-1:sizeof(lline)-1]=0;
 		// log rms values if requested
-		if (rms) {
+		} else if (rms) {
 			double d = log_rms(rms, line, n);
 			if (d!=0.0) {
 				write_amps(d);
