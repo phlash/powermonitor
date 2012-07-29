@@ -17,7 +17,9 @@ import java.awt.Font;
 import java.awt.geom.AffineTransform;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
+import java.awt.event.MouseWheelListener;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 import java.awt.event.KeyListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.ActionListener;
@@ -28,7 +30,7 @@ import javax.swing.Timer;
 import javax.swing.JFrame;
 
 public class RmsView extends Component
-	implements Runnable, MouseListener, MouseMotionListener, KeyListener, ActionListener {
+	implements Runnable, MouseListener, MouseMotionListener, MouseWheelListener, KeyListener, ActionListener {
 	private JFrame appframe;
 	private Font vfont;
 	private Calendar cal;
@@ -40,6 +42,7 @@ public class RmsView extends Component
 	private float samples[] = null;
 	private float min=9999999, max=0;
 	private boolean doavg = false;
+	private boolean dohrz = false;
 	private int pmax = -1;
 	// drag region start/end in pixels
 	private int dstart = -1;
@@ -79,7 +82,10 @@ public class RmsView extends Component
 	private float avg(float[] samples, int off, int len) {
 		float sum=0;
 		if (len<=0) len=1;
-		for (int i=off; i<off+len; i++)
+		if (off>=samples.length) off=samples.length-1;
+		int end=off+len;
+		if (end>=samples.length) end=samples.length-1;
+		for (int i=off; i<end; i++)
 			sum+=(i<samples.length)?samples[i]:0;
 		return sum/(float)len;
 	}
@@ -87,14 +93,61 @@ public class RmsView extends Component
 	private float peak(float[] samples, int off, int len) {
 		float pk=0;
 		if (len<=0) len=1;
-		for(int i=off; i<off+len; i++)
+		if (off>=samples.length) off=samples.length-1;
+		int end=off+len;
+		if (end>=samples.length) end=samples.length-1;
+		for(int i=off; i<end; i++)
 			pk=(samples[i]>pk)?samples[i]:pk;
 		return pk;
 	}
 
 	private boolean ismidnight(long[] dates, int off, int len) {
 		if(len<=0) len=1;
-		if(dates[off]/86400000!=dates[off+len]/86400000)
+		if (off>=dates.length) off=dates.length-1;
+		int end=off+len;
+		if (end>=dates.length) end=dates.length-1;
+		if(dates[off]/86400000!=dates[end]/86400000)
+			return true;
+		return false;
+	}
+
+	private boolean ishour(long[] dates, int off, int len) {
+		if(len<=0) len=1;
+		if (off>=dates.length) off=dates.length-1;
+		int end=off+len;
+		if (end>=dates.length) end=dates.length-1;
+		if(dates[off]/3600000!=dates[end]/3600000)
+			return true;
+		return false;
+	}
+
+	private boolean isquarter(long[] dates, int off, int len) {
+		if(len<=0) len=1;
+		if (off>=dates.length) off=dates.length-1;
+		int end=off+len;
+		if (end>=dates.length) end=dates.length-1;
+		if(dates[off]/900000!=dates[end]/900000)
+			return true;
+		return false;
+	}
+
+	private boolean isminute(long[] dates, int off) {
+		if (off>=dates.length) off=dates.length-1;
+		if(dates[off]%60000==0)
+			return true;
+		return false;
+	}
+
+	private boolean isqmin(long[] dates, int off) {
+		if (off>=dates.length) off=dates.length-1;
+		if(dates[off]%15000==0)
+			return true;
+		return false;
+	}
+
+	private boolean issec(long[] dates, int off) {
+		if (off>=dates.length) off=dates.length-1;
+		if(dates[off]%1000==0)
 			return true;
 		return false;
 	}
@@ -115,6 +168,7 @@ public class RmsView extends Component
 		if (loaded) {
 			float scl = scale();
 			int i=(int)((float)mpos*scl)+vstart;
+			if (i>=samples.length) i=samples.length-1;
 			measure = ""+samples[i]+"/"+get_utc(dates[i]);
 			repaint();
 		}
@@ -155,11 +209,39 @@ public class RmsView extends Component
 		if (loaded) {
 			float scl = scale();
 			g.setFont(vfont);
+			int lo=-1;
 			for(int i=0; i<getWidth(); i++) {
 				int o = (int)((float)i*scl)+vstart;
-				if (ismidnight(dates,o,(int)scl)) {
+				if (lo!=o && ismidnight(dates,o,(int)scl)) {
+					g.setColor(Color.LIGHT_GRAY);
 					g.drawLine(i,0,i,getHeight());
 					g.drawString(get_utc(dates[o]),i-5,200);
+					lo=o;
+				} else if (lo!=o && scl<60 && ishour(dates,o,(int)scl)) {
+					g.setColor(Color.GRAY);
+					g.drawLine(i,0,i,getHeight());
+					g.drawString(get_utc(dates[o]),i-5,200);
+					lo=o;
+				} else if (lo!=o && scl<15 && isquarter(dates,o,(int)scl)) {
+					g.setColor(Color.GRAY);
+					g.drawLine(i,0,i,getHeight());
+					g.drawString(get_utc(dates[o]),i-5,200);
+					lo=o;
+				} else if (lo!=o && scl<1 && isminute(dates,o)) {
+					g.setColor(Color.GRAY);
+					g.drawLine(i,0,i,getHeight());
+					g.drawString(get_utc(dates[o]),i-5,200);
+					lo=o;
+				} else if(lo!=o && scl<0.25 && isqmin(dates,o)) {
+					g.setColor(Color.GRAY);
+					g.drawLine(i,0,i,getHeight());
+					g.drawString(get_utc(dates[o]),i-5,200);
+					lo=o;
+				} else if(lo!=o && scl<0.05 && issec(dates,o)) {
+					g.setColor(Color.GRAY);
+					g.drawLine(i,0,i,getHeight());
+					g.drawString(get_utc(dates[o]),i-5,200);
+					lo=o;
 				}
 			}
 
@@ -223,6 +305,41 @@ public class RmsView extends Component
 		}
 	}
 
+	public void mouseWheelMoved(MouseWheelEvent m) {
+		if(dohrz) {
+			// horizontal scroll
+			int z = (vend-vstart)/20;
+			if(m.getWheelRotation()<0) {
+				if(vend+z>samples.length)
+					z=samples.length-vend;
+				vstart+=z;
+				vend+=z;
+			} else {
+				if(vstart-z<0)
+					z=vstart;
+				vstart-=z;
+				vend-=z;
+			}
+		} else {
+			if(m.getWheelRotation()<0) {
+				// zoom in to 80% around cursor
+				int z = (vend-vstart)/10;
+				int zs = (z*m.getX())/getWidth();
+				vstart += zs;
+				vend -= z-zs;
+				if (vend<=vstart) vend=vstart+1;
+			} else {
+				// zoom out to 125%
+				int z = (vend-vstart)/8;
+				vstart -= z;
+				if (vstart<0) vstart=0;
+				vend += z;
+				if (vend>samples.length) vend=samples.length;
+			}
+		}
+		repaint();
+	}
+
 	public void keyPressed(KeyEvent k) {
 		if (k.getKeyCode()==KeyEvent.VK_Z && dstart>=0 && dend>=0) {
 			// reverse if dragged left
@@ -234,7 +351,9 @@ public class RmsView extends Component
 			// calculate new view into samples
 			float scl = scale();
 			vend = (int)((float)dend*scl)+vstart;
+			if (vend>samples.length) vend=samples.length;
 			vstart = (int)((float)dstart*scl)+vstart;
+			if (vstart>samples.length) vstart=samples.length;
 		} else if(k.getKeyCode()==KeyEvent.VK_N) {
 			vstart = 0;
 			vend = samples.length;
@@ -242,12 +361,16 @@ public class RmsView extends Component
 			appframe.dispose();
 		} else if(k.getKeyCode()==KeyEvent.VK_A) {
 			doavg=!doavg;
+		} else if(k.getKeyCode()==KeyEvent.VK_CONTROL) {
+			dohrz=true;
 		}
 		dstart = -1;
 		repaint();
 	}
 
 	public void keyReleased(KeyEvent k) {
+		if (k.getKeyCode()==KeyEvent.VK_CONTROL)
+			dohrz=false;
 	}
 
 	public void keyTyped(KeyEvent k) {
@@ -261,6 +384,7 @@ public class RmsView extends Component
 		appframe.setVisible(true);
 		appframe.getContentPane().addMouseListener(this);
 		appframe.getContentPane().addMouseMotionListener(this);
+		appframe.getContentPane().addMouseWheelListener(this);
 		appframe.addKeyListener(this);
 		new Thread(new Runnable() {
 			public void run() {
@@ -298,6 +422,8 @@ public class RmsView extends Component
 					min = samples[i]<min? samples[i]: min;
 					max = samples[i]>max? samples[pmax=i]: max;
 				}
+				tvec = null;
+				System.gc();
 				status = "Loaded";
 				vstart = 0;
 				vend = samples.length;
