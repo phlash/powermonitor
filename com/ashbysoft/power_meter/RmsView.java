@@ -388,41 +388,43 @@ public class RmsView extends Component
 		appframe.addKeyListener(this);
 		new Thread(new Runnable() {
 			public void run() {
-				Vector<String> tvec = new Vector<String>();
+				int lines = 0;
 				try {
+					// count lines in file, before allocating buffers and parsing
 					BufferedReader bread = new BufferedReader(new FileReader(rmslog));
 					String line;
 					while ((line=bread.readLine())!=null) {
-						tvec.add(line);
+						lines++;
+					}
+					bread.close();
+					samples = new float[lines];
+					dates = new long[lines];
+					bread = new BufferedReader(new FileReader(rmslog));
+					for (int i=0; i<lines; i++) {
+						line = bread.readLine();
+						int col = line.indexOf(':');
+						int dsh = line.indexOf('-');
+						try {
+							dates[i] = Long.parseLong(line.substring(0,col))*1000;
+						} catch (NumberFormatException n) {
+							dates[i] = System.currentTimeMillis();
+						}
+						try {
+							if (dsh>0)
+								samples[i] = toamps(Float.parseFloat(line.substring(col+2, dsh-1)));
+							else
+								samples[i] = toamps(Float.parseFloat(line.substring(col+2)));
+						} catch (NumberFormatException n) {
+							samples[i] = 0;
+						}
+						min = samples[i]<min? samples[i]: min;
+						max = samples[i]>max? samples[pmax=i]: max;
 					}
 					bread.close();
 				} catch (Exception e) {
 					status = e.toString();
 					return;
 				}
-				samples = new float[tvec.size()];
-				dates = new long[tvec.size()];
-				for (int i=0; i<tvec.size(); i++) {
-					String line = tvec.get(i);
-					int col = line.indexOf(':');
-					int dsh = line.indexOf('-');
-					try {
-						dates[i] = Long.parseLong(line.substring(0,col))*1000;
-					} catch (NumberFormatException n) {
-						dates[i] = System.currentTimeMillis();
-					}
-					try {
-						if (dsh>0)
-							samples[i] = toamps(Float.parseFloat(line.substring(col+2, dsh-1)));
-						else
-							samples[i] = toamps(Float.parseFloat(line.substring(col+2)));
-					} catch (NumberFormatException n) {
-						samples[i] = 0;
-					}
-					min = samples[i]<min? samples[i]: min;
-					max = samples[i]>max? samples[pmax=i]: max;
-				}
-				tvec = null;
 				System.gc();
 				status = "Loaded";
 				vstart = 0;
