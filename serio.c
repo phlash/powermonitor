@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include <termios.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -77,7 +78,7 @@ void write_amps(double rms) {
 }
 
 int main(int argc, char **argv) {
-	int arg, fd, n, d=0;
+	int arg, fd, n, d=0, bkg=0;
 	struct termios oio, tio = {0};
 	char line[40];
 	char *dev = POWERDEV;
@@ -86,12 +87,21 @@ int main(int argc, char **argv) {
 	for(arg=1; arg<argc; arg++) {
 		if (argv[arg][1]=='d')
 			dev = argv[++arg];
-		else if (argv[arg][1]=='r') {
+		else if (argv[arg][1]=='r')
 			rms = argv[++arg];
-		} else {
-			puts("usage: serio [-d <serial device>] [-r <rms value log>]");
+		else if (argv[arg][1]=='b')
+			bkg = 1;
+		else {
+			puts("usage: serio [-d <serial device>] [-r <rms value log>] [-b]");
 			return(0);
 		}
+	}
+
+	// Background ourselves if requested
+	if (bkg) {
+		if(fork())
+			return 0;	// parent leaves..
+		setsid();		// child starts new process group
 	}
 
 	// Open serial device, avoid it becoming controlling terminal
