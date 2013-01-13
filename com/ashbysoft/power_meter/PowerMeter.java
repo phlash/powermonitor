@@ -10,11 +10,14 @@ import java.awt.Graphics;
 import java.awt.Component;
 import java.awt.Color;
 
+import java.net.Socket;
+
 import javax.swing.SwingUtilities;
 import javax.swing.JFrame;
 
 public class PowerMeter extends Component implements Runnable {
 	private File serio;
+	private Socket data;
 	private int spos = 0;
 	private short samples[] = new short[1000];
 
@@ -24,15 +27,22 @@ public class PowerMeter extends Component implements Runnable {
 	}
 
 	PowerMeter(String[] args) throws Exception {
-		// Check serio interface program is available
-		String p1 = getClass().getProtectionDomain().getCodeSource().getLocation().getPath();
-		String base = URLDecoder.decode(p1, "UTF-8");
-		if (base.endsWith(".jar")) {
-			base = base.substring(0, base.lastIndexOf('/'));
-		}
-		this.serio = new File(base + File.separator + "serio");
-		if (!serio.exists()) {
-			throw new Exception("missing serio program in jar folder");
+		// Network data or local program?
+		this.serio = null;
+		this.data = null;
+		if (args.length>0) {
+			this.data = new Socket("localhost", Integer.parseInt(args[0]));
+		} else {
+			// Check serio interface program is available
+			String p1 = getClass().getProtectionDomain().getCodeSource().getLocation().getPath();
+			String base = URLDecoder.decode(p1, "UTF-8");
+			if (base.endsWith(".jar")) {
+				base = base.substring(0, base.lastIndexOf('/'));
+			}
+			this.serio = new File(base + File.separator + "serio");
+			if (!serio.exists()) {
+				throw new Exception("missing serio program in jar folder");
+			}
 		}
 	}
 
@@ -67,11 +77,16 @@ public class PowerMeter extends Component implements Runnable {
 		new Thread(new Runnable() {
 			public void run() {
 				try {
-					// Kick off serio, plot waveform scope style..
-					Process pserio = Runtime.getRuntime().exec(serio.toString());
-					BufferedReader bread = new BufferedReader(new InputStreamReader(pserio.getInputStream()));
+					BufferedReader bread = null;
+					if (serio!=null) {
+						// Kick off serio, plot waveform scope style..
+						Process pserio = Runtime.getRuntime().exec(serio.toString());
+						bread = new BufferedReader(new InputStreamReader(pserio.getInputStream()));
+					} else if (data!=null) {
+						bread = new BufferedReader(new InputStreamReader(data.getInputStream()));
+					}
 					String line;
-					while ((line=bread.readLine())!=null) {
+					while (bread!=null && (line=bread.readLine())!=null) {
 						if (line.length()>0) {
 							try {
 								int t = Integer.parseInt(line, 16);
