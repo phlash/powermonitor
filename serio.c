@@ -6,6 +6,10 @@
 #include <termios.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <signal.h>
 #include <math.h>
 #include <time.h>
 
@@ -78,11 +82,12 @@ void write_amps(double rms) {
 }
 
 int main(int argc, char **argv) {
-	int arg, fd, n, d=0, bkg=0;
+	int arg, fd, n, d=0, bkg=0, l=0, s=0;
 	struct termios oio, tio = {0};
 	char line[40];
 	char *dev = POWERDEV;
 	char *rms = NULL;
+	char *prt = NULL;
 
 	for(arg=1; arg<argc; arg++) {
 		if (argv[arg][1]=='d')
@@ -91,8 +96,10 @@ int main(int argc, char **argv) {
 			rms = argv[++arg];
 		else if (argv[arg][1]=='b')
 			bkg = 1;
+		else if (argv[arg][1]=='s')
+			prt = argv[++arg];
 		else {
-			puts("usage: serio [-d <serial device>] [-r <rms value log>] [-b]");
+			puts("usage: serio [-d <serial device>] [-r <rms value log>] [-b] [-s <port>]");
 			return(0);
 		}
 	}
@@ -102,6 +109,22 @@ int main(int argc, char **argv) {
 		if(fork())
 			return 0;	// parent leaves..
 		setsid();		// child starts new process group
+	}
+
+	// Open data server port if requested
+	if (prt) {
+		struct sockaddr_in saddr = {0};
+		saddr.sin_family = AF_INET;
+		saddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		saddr.sin_port = htons(atoi(prt));
+		l = socket(PF_INET, SOCK_STREAM, 0);
+		if (l<0 || bind(l, (struct sockaddr *)&saddr, sizeof(saddr))) {
+			perror("creating listen socket");
+		} else {
+			listen(l, 5);
+			signal(SIGPIPE, SIG_IGN);
+			fcntl(l, F_SETFL, O_NONBLOCK);
+		}
 	}
 
 	// Open serial device, avoid it becoming controlling terminal
@@ -128,6 +151,17 @@ int main(int argc, char **argv) {
 
 	// read lines from power meter, print 'em
 	while ((n=read(fd, line, sizeof(line)))>0) {
+		// process any data connection
+		if (s>0) {
+			if(write(s, line, n)!=n) {
+				close(s);
+				s = 0;
+			}
+		}
+		if (l>0 && s<=0) {
+			s = accept(l, NULL, NULL);
+		}
+
 		// retain last line starting with '-'
 		if (line[0]=='-') {
 			strncpy(lline, line, sizeof(lline)-1);
