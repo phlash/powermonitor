@@ -5,10 +5,13 @@ import java.util.Vector;
 import java.util.TimeZone;
 import java.util.Calendar;
 import java.util.Formatter;
+import java.util.zip.GZIPInputStream;
 
 import java.io.File;
 import java.io.FileReader;
 import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.FileInputStream;
 
 import java.awt.Graphics;
 import java.awt.Component;
@@ -35,6 +38,7 @@ public class RmsView extends Component
 	private Font vfont;
 	private Calendar cal;
 	private File rmslog;
+	private boolean isGzip = false;
 	private String status;
 	private String measure;
 	private boolean loaded = false;
@@ -67,7 +71,9 @@ public class RmsView extends Component
 		if (!rmslog.exists()) {
 			throw new Exception("missing rmslog file: "+deflog);
 		}
-		this.status = "Loading rmslog file: "+deflog;
+		if (args.length>1)
+			this.isGzip = true;
+		this.status = "Loading file: "+rmslog.getName();
 		this.htime = new Timer(500, this);
 	}
 
@@ -389,17 +395,31 @@ public class RmsView extends Component
 		new Thread(new Runnable() {
 			public void run() {
 				int lines = 0;
+				BufferedReader bread; 
 				try {
 					// count lines in file, before allocating buffers and parsing
-					BufferedReader bread = new BufferedReader(new FileReader(rmslog));
+					if (isGzip) {
+						bread = new BufferedReader(new InputStreamReader(new GZIPInputStream(new FileInputStream(rmslog))));
+					} else {
+						bread = new BufferedReader(new FileReader(rmslog));
+					}
 					String line;
 					while ((line=bread.readLine())!=null) {
 						lines++;
+						if(lines%1000==0) {
+							status = "Loading file: " + rmslog.getName() + ": counting: " + lines;
+							repaint();
+						}
 					}
 					bread.close();
 					samples = new float[lines];
 					dates = new long[lines];
-					bread = new BufferedReader(new FileReader(rmslog));
+					// count lines in file, before allocating buffers and parsing
+					if (isGzip) {
+						bread = new BufferedReader(new InputStreamReader(new GZIPInputStream(new FileInputStream(rmslog))));
+					} else {
+						bread = new BufferedReader(new FileReader(rmslog));
+					}
 					for (int i=0; i<lines; i++) {
 						line = bread.readLine();
 						int col = line.indexOf(':');
@@ -419,6 +439,10 @@ public class RmsView extends Component
 						}
 						min = samples[i]<min? samples[i]: min;
 						max = samples[i]>max? samples[pmax=i]: max;
+						if(i%1000==0) {
+							status = "Loading file: " + rmslog.getName() + ": reading: " + lines;
+							repaint();
+						}
 					}
 					bread.close();
 				} catch (Exception e) {
