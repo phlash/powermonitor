@@ -81,9 +81,38 @@ void write_amps(double rms) {
 	dlen=11;
 }
 
+static struct termios oio, tio = {0};
+static int ocnt = 0;
+int open_serial(char *dev) {
+	// Open serial device, avoid it becoming controlling terminal
+	int fd = open(dev, O_RDWR | O_NOCTTY);
+	if (fd<0) {
+		perror("opening serial device");
+		return(1);
+	}
+	fprintf(stderr, "open count: %d\n", ocnt);
+
+	// save old config
+	if (!ocnt)
+		tcgetattr(fd, &oio);
+
+	// set new config
+	tio.c_cflag = POWERBAUD | CS8 | CLOCAL | CREAD;
+	tio.c_iflag = IGNPAR | ICRNL;
+	tio.c_oflag = 0;
+	tio.c_lflag = ICANON;
+	tio.c_cc[VEOF] = 4;	// Ctrl-d
+	tio.c_cc[VMIN] = 1;	// Wait for at least one char per read
+
+	// flush anything collected, and set new config
+	tcflush(fd, TCIFLUSH);
+	tcsetattr(fd, TCSANOW, &tio);
+	ocnt++;
+	return fd;
+}
+
 int main(int argc, char **argv) {
 	int arg, fd, n, d=0, bkg=0, l=0, s=0;
-	struct termios oio, tio = {0};
 	char line[40];
 	char *dev = POWERDEV;
 	char *rms = NULL;
@@ -127,29 +156,10 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	// Open serial device, avoid it becoming controlling terminal
-	fd = open(dev, O_RDWR | O_NOCTTY);
-	if (fd<0) {
-		perror("opening serial device");
-		return(1);
-	}
 
-	// save old config
-	tcgetattr(fd, &oio);
-
-	// set new config
-	tio.c_cflag = POWERBAUD | CS8 | CLOCAL | CREAD;
-	tio.c_iflag = IGNPAR | ICRNL;
-	tio.c_oflag = 0;
-	tio.c_lflag = ICANON;
-	tio.c_cc[VEOF] = 4;	// Ctrl-d
-	tio.c_cc[VMIN] = 1;	// Wait for at least one char per read
-
-	// flush anything collected, and set new config
-	tcflush(fd, TCIFLUSH);
-	tcsetattr(fd, TCSANOW, &tio);
-
+retry:
 	// read lines from power meter, print 'em
+	fd = open_serial(dev);
 	while ((n=read(fd, line, sizeof(line)))>0) {
 		// process any data connection
 		if (s>0) {
@@ -198,6 +208,8 @@ int main(int argc, char **argv) {
 			}
 		}
 	}
+	if (n<=0)
+		goto retry;
 
 	// reset config
 	tcsetattr(fd, TCSANOW, &oio);
