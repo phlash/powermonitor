@@ -88,7 +88,7 @@ int open_serial(char *dev) {
 	int fd = open(dev, O_RDWR | O_NOCTTY);
 	if (fd<0) {
 		perror("opening serial device");
-		return(1);
+		return -1;
 	}
 	fprintf(stderr, "open count: %d\n", ocnt);
 
@@ -208,8 +208,10 @@ retry:
 			}
 		}
 	}
-	if (n<=0)
+	if (n<=0) {
+		sleep(10);
 		goto retry;
+	}
 
 	// reset config
 	tcsetattr(fd, TCSANOW, &oio);
