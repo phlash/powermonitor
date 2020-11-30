@@ -1,27 +1,28 @@
 # Build linux power meter control app
+BIN=bin
 JAR=jar
 JAVAC=javac
 LIBS=-lm
 
-all: power_meter.jar rms_view.jar
+all: $(BIN) $(BIN)/serio $(BIN)/power_meter.jar $(BIN)/rms_view.jar
 
 clean:
-	rm -rf serio power_meter.jar rms_view.jar class *.o
+	rm -rf $(BIN)
 
-power_meter.jar: class class/com/ashbysoft/power_meter/PowerMeter.class serio
-	$(JAR) cfe $@ com.ashbysoft.power_meter.PowerMeter serio -C class .
+$(BIN)/power_meter.jar: $(BIN)/com/ashbysoft/power_meter/PowerMeter.class
+	$(JAR) cfe $@ com.ashbysoft.power_meter.PowerMeter -C $(BIN) com/ashbysoft/power_meter/PowerMeter.class
 
-rms_view.jar: class class/com/ashbysoft/power_meter/RmsView.class
-	$(JAR) cfe $@ com.ashbysoft.power_meter.RmsView -C class .
+$(BIN)/rms_view.jar: $(BIN)/com/ashbysoft/power_meter/RmsView.class
+	$(JAR) cfe $@ com.ashbysoft.power_meter.RmsView -C $(BIN) com/ashbysoft/power_meter/RmsView.class
 
-class:
-	mkdir -p class
+$(BIN):
+	mkdir -p $(BIN)
 
-serio: serio.o
+$(BIN)/serio: $(BIN)/serio.o
 	$(CC) -o $@ $< $(LIBS)
 
-%.o: %.c
+$(BIN)/%.o: %.c
 	$(CC) -c -o $@ $(CFLAGS) $<
 
-class/%.class: %.java
-	$(JAVAC) -d class $<
+$(BIN)/%.class: %.java
+	$(JAVAC) -d $(BIN) $<

@@ -1,6 +1,7 @@
 /*A touch of serial I/O to interface with my power metering board.. */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <termios.h>
@@ -117,6 +118,7 @@ int main(int argc, char **argv) {
 	char *dev = POWERDEV;
 	char *rms = NULL;
 	char *prt = NULL;
+	char *out = NULL;
 
 	for(arg=1; arg<argc; arg++) {
 		if (argv[arg][1]=='d')
@@ -127,8 +129,10 @@ int main(int argc, char **argv) {
 			bkg = 1;
 		else if (argv[arg][1]=='s')
 			prt = argv[++arg];
+		else if (argv[arg][1]=='o')
+			out = argv[++arg];
 		else {
-			puts("usage: serio [-d <serial device>] [-r <rms value log>] [-b] [-s <port>]");
+			puts("usage: serio [-d <serial device>] [-r <rms value log>] [-b] [-s <port>] [-o <outfile>]");
 			return(0);
 		}
 	}
@@ -140,11 +144,16 @@ int main(int argc, char **argv) {
 		setsid();		// child starts new process group
 	}
 
+	// Redirect stdout if requested
+	if (out) {
+		freopen(out, "a", stdout);
+	}
+
 	// Open data server port if requested
 	if (prt) {
 		struct sockaddr_in saddr = {0};
 		saddr.sin_family = AF_INET;
-		saddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		saddr.sin_addr.s_addr = htonl(INADDR_ANY);
 		saddr.sin_port = htons(atoi(prt));
 		l = socket(PF_INET, SOCK_STREAM, 0);
 		if (l<0 || bind(l, (struct sockaddr *)&saddr, sizeof(saddr))) {
@@ -183,7 +192,7 @@ retry:
 				write_amps(d);
 			}
 		} else {
-			write(1, line, n);
+			fwrite(line, n, 1, stdout);
 			// check for display messages, forward them
 			if (ioctl(0, FIONREAD, &n)<0) {
 				perror("checking stdin pipe");

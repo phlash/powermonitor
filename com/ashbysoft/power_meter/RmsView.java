@@ -60,7 +60,6 @@ public class RmsView extends Component
 
 	public static void main(String[] args) throws Exception {
 		RmsView me = new RmsView(args);
-		SwingUtilities.invokeLater(me);
 	}
 
 	RmsView(String[] args) throws Exception {
@@ -75,6 +74,18 @@ public class RmsView extends Component
 			this.isGzip = true;
 		this.status = "Loading file: "+rmslog.getName();
 		this.htime = new Timer(500, this);
+		// Build GUI
+		appframe = new JFrame("RMS Viewer");
+		appframe.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+		appframe.setSize(1000, 600);
+		appframe.add(this);
+		appframe.setVisible(true);
+		appframe.getContentPane().addMouseListener(this);
+		appframe.getContentPane().addMouseMotionListener(this);
+		appframe.getContentPane().addMouseWheelListener(this);
+		appframe.addKeyListener(this);
+		// Load file
+		new Thread(this).start();
 	}
 
 	private float toamps(float r) {
@@ -383,79 +394,66 @@ public class RmsView extends Component
 	}
 
 	public void run() {
-		appframe = new JFrame("RMS Viewer");
-		appframe.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-		appframe.setSize(1000, 600);
-		appframe.add(this);
-		appframe.setVisible(true);
-		appframe.getContentPane().addMouseListener(this);
-		appframe.getContentPane().addMouseMotionListener(this);
-		appframe.getContentPane().addMouseWheelListener(this);
-		appframe.addKeyListener(this);
-		new Thread(new Runnable() {
-			public void run() {
-				int lines = 0;
-				BufferedReader bread; 
-				try {
-					// count lines in file, before allocating buffers and parsing
-					if (isGzip) {
-						bread = new BufferedReader(new InputStreamReader(new GZIPInputStream(new FileInputStream(rmslog))));
-					} else {
-						bread = new BufferedReader(new FileReader(rmslog));
-					}
-					String line;
-					while ((line=bread.readLine())!=null) {
-						lines++;
-						if(lines%1000==0) {
-							status = "Loading file: " + rmslog.getName() + ": counting: " + lines;
-							repaint();
-						}
-					}
-					bread.close();
-					samples = new float[lines];
-					dates = new long[lines];
-					// count lines in file, before allocating buffers and parsing
-					if (isGzip) {
-						bread = new BufferedReader(new InputStreamReader(new GZIPInputStream(new FileInputStream(rmslog))));
-					} else {
-						bread = new BufferedReader(new FileReader(rmslog));
-					}
-					for (int i=0; i<lines; i++) {
-						line = bread.readLine();
-						int col = line.indexOf(':');
-						int dsh = line.indexOf('-');
-						try {
-							dates[i] = Long.parseLong(line.substring(0,col))*1000;
-						} catch (NumberFormatException n) {
-							dates[i] = System.currentTimeMillis();
-						}
-						try {
-							if (dsh>0)
-								samples[i] = toamps(Float.parseFloat(line.substring(col+2, dsh-1)));
-							else
-								samples[i] = toamps(Float.parseFloat(line.substring(col+2)));
-						} catch (NumberFormatException n) {
-							samples[i] = 0;
-						}
-						min = samples[i]<min? samples[i]: min;
-						max = samples[i]>max? samples[pmax=i]: max;
-						if(i%1000==0) {
-							status = "Loading file: " + rmslog.getName() + ": reading: " + lines;
-							repaint();
-						}
-					}
-					bread.close();
-				} catch (Exception e) {
-					status = e.toString();
-					return;
-				}
-				System.gc();
-				status = "Loaded";
-				vstart = 0;
-				vend = samples.length;
-				loaded = true;
-				repaint();
+		int lines = 0;
+		BufferedReader bread; 
+		try {
+			// count lines in file, before allocating buffers and parsing
+			if (isGzip) {
+				bread = new BufferedReader(new InputStreamReader(new GZIPInputStream(new FileInputStream(rmslog))));
+			} else {
+				bread = new BufferedReader(new FileReader(rmslog));
 			}
-		}).start();
+			String line;
+			while ((line=bread.readLine())!=null) {
+				lines++;
+				if(lines%1000==0) {
+					status = "Loading file: " + rmslog.getName() + ": counting: " + lines;
+					repaint();
+				}
+			}
+			bread.close();
+			samples = new float[lines];
+			dates = new long[lines];
+			// count lines in file, before allocating buffers and parsing
+			if (isGzip) {
+				bread = new BufferedReader(new InputStreamReader(new GZIPInputStream(new FileInputStream(rmslog))));
+			} else {
+				bread = new BufferedReader(new FileReader(rmslog));
+			}
+			for (int i=0; i<lines; i++) {
+				line = bread.readLine();
+				int col = line.indexOf(':');
+				int dsh = line.indexOf('-');
+				try {
+					dates[i] = Long.parseLong(line.substring(0,col))*1000;
+				} catch (NumberFormatException n) {
+					dates[i] = System.currentTimeMillis();
+				}
+				try {
+					if (dsh>0)
+						samples[i] = toamps(Float.parseFloat(line.substring(col+2, dsh-1)));
+					else
+						samples[i] = toamps(Float.parseFloat(line.substring(col+2)));
+				} catch (NumberFormatException n) {
+					samples[i] = 0;
+				}
+				min = samples[i]<min? samples[i]: min;
+				max = samples[i]>max? samples[pmax=i]: max;
+				if(i%1000==0) {
+					status = "Loading file: " + rmslog.getName() + ": reading: " + lines;
+					repaint();
+				}
+			}
+			bread.close();
+		} catch (Exception e) {
+			status = e.toString();
+			return;
+		}
+		System.gc();
+		status = "Loaded";
+		vstart = 0;
+		vend = samples.length;
+		loaded = true;
+		repaint();
 	}
 }

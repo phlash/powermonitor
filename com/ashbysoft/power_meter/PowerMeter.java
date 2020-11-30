@@ -23,7 +23,6 @@ public class PowerMeter extends Component implements Runnable {
 
 	public static void main(String[] args) throws Exception {
 		PowerMeter me = new PowerMeter(args);
-		SwingUtilities.invokeLater(me);
 	}
 
 	PowerMeter(String[] args) throws Exception {
@@ -31,7 +30,10 @@ public class PowerMeter extends Component implements Runnable {
 		this.serio = null;
 		this.data = null;
 		if (args.length>0) {
-			this.data = new Socket("localhost", Integer.parseInt(args[0]));
+			if (args.length>1)
+				this.data = new Socket(args[0], Integer.parseInt(args[1]));
+			else
+				this.data = new Socket("localhost", Integer.parseInt(args[0]));
 		} else {
 			// Check serio interface program is available
 			String p1 = getClass().getProtectionDomain().getCodeSource().getLocation().getPath();
@@ -44,6 +46,14 @@ public class PowerMeter extends Component implements Runnable {
 				throw new Exception("missing serio program in jar folder");
 			}
 		}
+		// Build GUI
+		JFrame frame = new JFrame("Power Meter: raw (unscaled) current samples");
+		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		frame.setSize(samples.length, 600);
+		frame.add(this);
+		frame.setVisible(true);
+		// Read samples..
+		new Thread(this).start();
 	}
 
 	public void paint(Graphics g) {
@@ -65,46 +75,38 @@ public class PowerMeter extends Component implements Runnable {
 			}
 		}
 		ms = (long)Math.sqrt(ms/samples.length);
+		g.setColor(Color.RED);
 		g.drawString("min:"+mn+" max:"+mx+" rms:"+ms, 10, 10);
 	}
 
 	public void run() {
-		JFrame frame = new JFrame("Power Meter");
-		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		frame.setSize(samples.length, 600);
-		frame.add(this);
-		frame.setVisible(true);
-		new Thread(new Runnable() {
-			public void run() {
-				try {
-					BufferedReader bread = null;
-					if (serio!=null) {
-						// Kick off serio, plot waveform scope style..
-						Process pserio = Runtime.getRuntime().exec(serio.toString());
-						bread = new BufferedReader(new InputStreamReader(pserio.getInputStream()));
-					} else if (data!=null) {
-						bread = new BufferedReader(new InputStreamReader(data.getInputStream()));
+		try {
+			BufferedReader bread = null;
+			if (serio!=null) {
+				// Kick off serio, plot waveform scope style..
+				Process pserio = Runtime.getRuntime().exec(serio.toString());
+				bread = new BufferedReader(new InputStreamReader(pserio.getInputStream()));
+			} else if (data!=null) {
+				bread = new BufferedReader(new InputStreamReader(data.getInputStream()));
+			}
+			String line;
+			while (bread!=null && (line=bread.readLine())!=null) {
+				if (line.length()>0) {
+					try {
+						int t = Integer.parseInt(line, 16);
+						samples[spos] = (short)t;
+					} catch (NumberFormatException nf) {
+						System.out.println("unparsable="+line);
 					}
-					String line;
-					while (bread!=null && (line=bread.readLine())!=null) {
-						if (line.length()>0) {
-							try {
-								int t = Integer.parseInt(line, 16);
-								samples[spos] = (short)t;
-							} catch (NumberFormatException nf) {
-								System.out.println("unparsable="+line);
-							}
-							if (++spos>=samples.length) {
-								spos=0;
-							}
-							if (spos%100==0)
-								repaint();
-						}
+					if (++spos>=samples.length) {
+						spos=0;
 					}
-				} catch (Exception e) {
-					e.printStackTrace();
+					if (spos%100==0)
+						repaint();
 				}
 			}
-		}).start();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 }
