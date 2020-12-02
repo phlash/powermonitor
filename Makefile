@@ -1,10 +1,14 @@
-# Build linux power meter control app
+# Build HCS08 targetted power monitor with SDCC & linux control apps
 BIN=bin
 JAR=jar
 JAVAC=javac
 LIBS=-lm
 
-all: $(BIN) $(BIN)/serio $(BIN)/power_meter.jar $(BIN)/rms_view.jar
+SDCC=sdcc
+SDCCFLAGS=-ms08 --stack-loc 0x86f
+SDCCLDFLAGS=--out-fmt-s19 
+
+all: $(BIN) $(BIN)/powermonitor.s19 $(BIN)/serio $(BIN)/power_meter.jar $(BIN)/rms_view.jar
 
 clean:
 	rm -rf $(BIN)
@@ -26,3 +30,9 @@ $(BIN)/%.o: %.c
 
 $(BIN)/%.class: %.java
 	$(JAVAC) -d $(BIN) $<
+
+$(BIN)/powermonitor.s19: $(BIN)/main.rel
+	$(SDCC) -o $@ $(SDCCFLAGS) $(SDCCLDFLAGS) $<
+ 
+$(BIN)/%.rel: %.c
+	$(SDCC) -c -o $@ $(SDCCFLAGS) $<
