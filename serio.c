@@ -114,6 +114,7 @@ int open_serial(char *dev) {
 
 int main(int argc, char **argv) {
 	int arg, fd, n, d=0, bkg=0, l=0, s=0;
+	FILE *fp;
 	char line[40];
 	char *dev = POWERDEV;
 	char *rms = NULL;
@@ -169,7 +170,9 @@ int main(int argc, char **argv) {
 retry:
 	// read lines from power meter, print 'em
 	fd = open_serial(dev);
-	while ((n=read(fd, line, sizeof(line)))>0) {
+	fp = fdopen(fd, "r");
+	while (fgets(line, sizeof(line), fp)!=NULL) {
+		n = strlen(line);
 		// process any data connection
 		if (s>0) {
 			if(write(s, line, n)!=n) {
@@ -192,7 +195,7 @@ retry:
 				write_amps(d);
 			}
 		} else {
-			fwrite(line, n, 1, stdout);
+			fputs(line, stdout);
 			// check for display messages, forward them
 			if (ioctl(0, FIONREAD, &n)<0) {
 				perror("checking stdin pipe");
@@ -216,8 +219,10 @@ retry:
 				d=0;
 			}
 		}
+		n = 0;
 	}
 	if (n<=0) {
+		fclose(fp);
 		sleep(10);
 		goto retry;
 	}
