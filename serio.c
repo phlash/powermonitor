@@ -101,7 +101,7 @@ int open_serial(char *dev) {
 	tio.c_cflag = POWERBAUD | CS8 | CLOCAL | CREAD;
 	tio.c_iflag = IGNPAR | ICRNL;
 	tio.c_oflag = 0;
-	tio.c_lflag = ICANON;
+	tio.c_lflag = 0;
 	tio.c_cc[VEOF] = 4;	// Ctrl-d
 	tio.c_cc[VMIN] = 1;	// Wait for at least one char per read
 
@@ -171,6 +171,7 @@ retry:
 	// read lines from power meter, print 'em
 	fd = open_serial(dev);
 	fp = fdopen(fd, "r");
+    bkg = 0;
 	while (fgets(line, sizeof(line), fp)!=NULL) {
 		n = strlen(line);
 		// process any data connection
@@ -180,7 +181,8 @@ retry:
 				s = 0;
 			}
 		}
-		if (l>0 && s<=0) {
+        // check for new connection ~once per sec
+		if (l>0 && s<=0 && (bkg%1000)==0) {
 			s = accept(l, NULL, NULL);
 		}
 
@@ -220,6 +222,7 @@ retry:
 			}
 		}
 		n = 0;
+        bkg++;
 	}
 	if (n<=0) {
 		fclose(fp);
