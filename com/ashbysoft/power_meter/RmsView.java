@@ -44,9 +44,11 @@ public class RmsView extends Component
 	private boolean loaded = false;
 	private long dates[] = null;
 	private float samples[] = null;
+	private boolean dotail = false;
 	private float min=9999999, max=0;
 	private boolean doavg = false;
 	private boolean dohrz = false;
+	private boolean dopau = false;
 	private int pmax = -1;
 	// drag region start/end in pixels
 	private int dstart = -1;
@@ -64,18 +66,26 @@ public class RmsView extends Component
 
 	RmsView(String[] args) throws Exception {
 		String deflog = "rms.log";
-		if (args.length>0)
-			deflog = args[0];
+		for (int arg=0; arg<args.length; arg++) {
+			if (args[arg].startsWith("-t")) {
+				this.dotail = true;
+			} else if (args[arg].startsWith("-z")) {
+				this.isGzip = true;
+			} else if (args[arg].startsWith("-h")) {
+				System.out.println("usage: RmsView [-t (tail)] [-z (zip)] <file>");
+				System.exit(0);
+			} else {
+				deflog = args[arg];
+			}
+		}
 		this.rmslog = new File(deflog);
 		if (!rmslog.exists()) {
 			throw new Exception("missing rmslog file: "+deflog);
 		}
-		if (args.length>1)
-			this.isGzip = true;
 		this.status = "Loading file: "+rmslog.getName();
 		this.htime = new Timer(500, this);
 		// Build GUI
-		appframe = new JFrame("RMS Viewer");
+		appframe = new JFrame((this.dotail ? "RMS Viewer (tailing): " : "RMS Viewer") + deflog);
 		appframe.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 		appframe.setSize(1000, 600);
 		appframe.add(this);
@@ -84,11 +94,15 @@ public class RmsView extends Component
 		appframe.getContentPane().addMouseMotionListener(this);
 		appframe.getContentPane().addMouseWheelListener(this);
 		appframe.addKeyListener(this);
-		// Load file
-		new Thread(this).start();
+		// Load file (possibly tail it)
+		Thread load = new Thread(this);
+		if (this.dotail)
+			load.setDaemon(true);
+		load.start();
 	}
 
 	private float toamps(float r) {
+		// TODO: recalibrate now we are sampling against 5v Vdd, not 3v3, calibration.ods has raw figures
 		return r/(float)4.73-(float)0.67;	// stupid Java compiler... constants are always double?
 	}
 
@@ -215,10 +229,11 @@ public class RmsView extends Component
 
 		// graticule
 		float mag = (float)(getHeight()-20)/max;
-		g.setColor(Color.LIGHT_GRAY);
 		for(int i=0; i<max; i+=max/10) {
 			int y = getHeight()-14-(int)((float)i*mag);
+			g.setColor(Color.LIGHT_GRAY);
 			g.drawLine(0,y,getWidth(),y);
+			g.setColor(Color.PINK);
 			g.drawString(""+i,10,y-2);
 		}
 
@@ -232,31 +247,37 @@ public class RmsView extends Component
 				if (lo!=o && ismidnight(dates,o,(int)scl)) {
 					g.setColor(Color.LIGHT_GRAY);
 					g.drawLine(i,0,i,getHeight());
+					g.setColor(Color.PINK);
 					g.drawString(get_utc(dates[o]),i-5,200);
 					lo=o;
 				} else if (lo!=o && scl<60 && ishour(dates,o,(int)scl)) {
 					g.setColor(Color.GRAY);
 					g.drawLine(i,0,i,getHeight());
+					g.setColor(Color.PINK);
 					g.drawString(get_utc(dates[o]),i-5,200);
 					lo=o;
 				} else if (lo!=o && scl<15 && isquarter(dates,o,(int)scl)) {
 					g.setColor(Color.GRAY);
 					g.drawLine(i,0,i,getHeight());
+					g.setColor(Color.PINK);
 					g.drawString(get_utc(dates[o]),i-5,200);
 					lo=o;
 				} else if (lo!=o && scl<1 && isminute(dates,o)) {
 					g.setColor(Color.GRAY);
 					g.drawLine(i,0,i,getHeight());
+					g.setColor(Color.PINK);
 					g.drawString(get_utc(dates[o]),i-5,200);
 					lo=o;
 				} else if(lo!=o && scl<0.25 && isqmin(dates,o)) {
 					g.setColor(Color.GRAY);
 					g.drawLine(i,0,i,getHeight());
+					g.setColor(Color.PINK);
 					g.drawString(get_utc(dates[o]),i-5,200);
 					lo=o;
 				} else if(lo!=o && scl<0.05 && issec(dates,o)) {
 					g.setColor(Color.GRAY);
 					g.drawLine(i,0,i,getHeight());
+					g.setColor(Color.PINK);
 					g.drawString(get_utc(dates[o]),i-5,200);
 					lo=o;
 				}
@@ -275,18 +296,16 @@ public class RmsView extends Component
 			g.setFont(vfont);
 			g.drawString(get_utc(dates[vstart]),15,200);
 			g.drawString(get_utc(dates[vend-1]),getWidth()-5,200);
-			g.setFont(fnt);
-			g.setColor(Color.YELLOW);
-			g.drawString("average:"+doavg+" max:"+max+"@"+pmax+" scl:"+scl+" view:"+vstart+"/"+vend,10,10);
+			status = (dopau?"PAUSED ":"")+"average:"+doavg+" max:"+max+"@"+pmax+" scl:"+scl+" view:"+vstart+"/"+vend;
 		}
 
 		// status area
 		g.setColor(Color.GRAY);
 		g.fillRect(0,getHeight()-13,getWidth(),getHeight());
-		g.setColor(Color.BLUE);
+		g.setColor(Color.YELLOW);
+		g.setFont(fnt);
 		g.drawString(status, 10, getHeight()-1);
 		if (measure!=null) {
-			g.setColor(Color.YELLOW);
 			g.drawString(measure, getWidth()-270, getHeight()-1);
 		}
 	}
@@ -378,6 +397,8 @@ public class RmsView extends Component
 			appframe.dispose();
 		} else if(k.getKeyCode()==KeyEvent.VK_A) {
 			doavg=!doavg;
+		} else if(k.getKeyCode()==KeyEvent.VK_P) {
+			dopau=!dopau;
 		} else if(k.getKeyCode()==KeyEvent.VK_CONTROL) {
 			dohrz=true;
 		}
@@ -414,7 +435,7 @@ public class RmsView extends Component
 			bread.close();
 			samples = new float[lines];
 			dates = new long[lines];
-			// count lines in file, before allocating buffers and parsing
+			// load 'em
 			if (isGzip) {
 				bread = new BufferedReader(new InputStreamReader(new GZIPInputStream(new FileInputStream(rmslog))));
 			} else {
@@ -422,38 +443,60 @@ public class RmsView extends Component
 			}
 			for (int i=0; i<lines; i++) {
 				line = bread.readLine();
-				int col = line.indexOf(':');
-				int dsh = line.indexOf('-');
-				try {
-					dates[i] = Long.parseLong(line.substring(0,col))*1000;
-				} catch (NumberFormatException n) {
-					dates[i] = System.currentTimeMillis();
-				}
-				try {
-					if (dsh>0)
-						samples[i] = toamps(Float.parseFloat(line.substring(col+2, dsh-1)));
-					else
-						samples[i] = toamps(Float.parseFloat(line.substring(col+2)));
-				} catch (NumberFormatException n) {
-					samples[i] = 0;
-				}
-				min = samples[i]<min? samples[i]: min;
-				max = samples[i]>max? samples[pmax=i]: max;
+				process(line, i);
 				if(i%1000==0) {
-					status = "Loading file: " + rmslog.getName() + ": reading: " + lines;
+					status = "Loading file: " + rmslog.getName() + ": " + i + "/" + lines;
 					repaint();
 				}
+			}
+			System.gc();
+			status = "Loaded";
+			vstart = 0;
+			vend = samples.length;
+			loaded = true;
+			repaint();
+			while (dotail) {
+				// paused?
+				while (dopau) {
+					try { Thread.sleep(1000); } catch(Exception e) {}
+				}
+				// blocking read for next line
+				line = bread.readLine();
+				// EOF, wait 1 second
+				if (null == line) {
+					try { Thread.sleep(1000); } catch(Exception e) {}
+					continue;
+				}
+				// drop first sample, move everything down, add new
+				System.arraycopy(samples, 1, samples, 0, samples.length-1);
+				System.arraycopy(dates, 1, dates, 0, dates.length-1);
+				process(line, samples.length-1);
+				repaint();
 			}
 			bread.close();
 		} catch (Exception e) {
 			status = e.toString();
 			return;
 		}
-		System.gc();
-		status = "Loaded";
-		vstart = 0;
-		vend = samples.length;
-		loaded = true;
-		repaint();
+	}
+
+	private void process(String line, int i) {
+		int col = line.indexOf(':');
+		int dsh = line.indexOf('-');
+		try {
+			dates[i] = Long.parseLong(line.substring(0,col))*1000;
+		} catch (NumberFormatException n) {
+			dates[i] = System.currentTimeMillis();
+		}
+		try {
+			if (dsh>0)
+				samples[i] = toamps(Float.parseFloat(line.substring(col+2, dsh-1)));
+			else
+				samples[i] = toamps(Float.parseFloat(line.substring(col+2)));
+		} catch (NumberFormatException n) {
+			samples[i] = 0;
+		}
+		min = samples[i]<min? samples[i]: min;
+		max = samples[i]>max? samples[pmax=i]: max;
 	}
 }
