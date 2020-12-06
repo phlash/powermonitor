@@ -31,7 +31,7 @@ void adc(void) __interrupt VectorNumber_Vadc1 {
 	static int16_t val;
 	uint8_t h = ADC1RH;
 	uint8_t l = ADC1RL;
-	// we perform unsigned bit shifting / or'ing together the bytes
+	// we perform unsigned extension & shifting / or'ing words
 	// to form a 10-bit ADC value (always positive), which we
 	// can also read as a signed value (same bits since positive)
 	// to perform arithmetic (subtraction) without sign-extending
@@ -40,14 +40,15 @@ void adc(void) __interrupt VectorNumber_Vadc1 {
 		uint16_t us;
 		int16_t ss;
 	} rv;
-	rv.us = ((unsigned short)h << 8) | (unsigned short)l;
+	rv.us = ((uint16_t)h << 8) | (uint16_t)l;
 	if (ADC1SC1_ADCH==15) {
 		// retain positive sample, kick off negative ADC
 		val = rv.ss;
 		ADC1SC1_ADCH=14;
 	} else {
-		// calculate final differential sample value
+		// calculate final differential sample value, mark done
 		aval = val - rv.ss;
+		adone = 1;
 	}
 }
 
@@ -101,18 +102,32 @@ void main(void) {
 	PTBD = 0x00;
 	PTBDD= 0xff;
 	while(1) {
-		signed short v = 0x8000;	// MIN_SHORT
+		uint16_t tc;
+		int16_t v = 0;
+		uint8_t s = 0;
 		__asm__("WAIT\n");
 		__RESET_WATCHDOG();
 		DisableInterrupts;
+		tc = ticks;
 		if (adone) {
 			// we have a new sample - grab it
 			v = aval;
+			s = 1;
 			adone=0;
 		}
 		EnableInterrupts;
-		if (v!=0x8000) {
+		if (s) {
 			serial(hex(v));
+			serial("\n");
+		}
+		// 1 second passed, rotate display chars :)
+		if ((tc%1000)==0) {
+			uint8_t t = disp[0];
+			for (uint8_t i=1; i<8; i++)
+				disp[i-1]=disp[i];
+			disp[7] = t;
+			serial("-tick:");
+			serial(hex(tc));
 			serial("\n");
 		}
 	}
