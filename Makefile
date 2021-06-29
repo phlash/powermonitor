@@ -8,7 +8,7 @@ SDCC=sdcc
 SDCCFLAGS=-ms08 --stack-loc 0x86f
 SDCCLDFLAGS=--out-fmt-s19 
 
-all: $(BIN) $(BIN)/powermonitor.s19 $(BIN)/serio $(BIN)/power_meter.jar $(BIN)/rms_view.jar
+all: $(BIN) $(BIN)/powermonitor.s19 $(BIN)/serio $(BIN)/serdump $(BIN)/power_meter.jar $(BIN)/rms_view.jar
 
 clean:
 	rm -rf $(BIN)
@@ -24,6 +24,9 @@ $(BIN):
 
 $(BIN)/serio: $(BIN)/serio.o
 	$(CC) -o $@ $< $(LIBS)
+
+$(BIN)/serdump: $(BIN)/serdump.o
+	$(CC) -o $@ $<
 
 $(BIN)/%.o: %.c
 	$(CC) -c -o $@ $(CFLAGS) $<
