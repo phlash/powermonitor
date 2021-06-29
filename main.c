@@ -52,7 +52,7 @@ void adc(void) __interrupt VectorNumber_Vadc1 {
 	}
 }
 
-void serial(char *msg) {
+void serialout(char *msg) {
 	// ASCIIZ string..
 	while (*msg) {
 		// busy wait for transmit empty
@@ -62,6 +62,13 @@ void serial(char *msg) {
 		SCI1D = *msg;
 		msg++;
 	}
+}
+
+int serialin() {
+    // RDRF bit set
+    if (SCI1S1 & 0x20)
+        return (int)SCI1D;
+    return -1;
 }
 
 char *hex(signed short val) {
@@ -117,18 +124,18 @@ void main(void) {
 		}
 		EnableInterrupts;
 		if (s) {
-			serial(hex(v));
-			serial("\n");
+			serialout(hex(v));
+			serialout("\n");
 		}
-		// 1 second passed, rotate display chars :)
-		if ((tc%1000)==0) {
+        // poked by receiver, rotate display, send tick count
+        if (serialin()>=0) {
 			uint8_t t = disp[0];
 			for (uint8_t i=1; i<8; i++)
 				disp[i-1]=disp[i];
 			disp[7] = t;
-			serial("-tick:");
-			serial(hex(tc));
-			serial("\n");
+			serialout("-tick:");
+			serialout(hex(tc));
+			serialout("\n");
 		}
 	}
 }

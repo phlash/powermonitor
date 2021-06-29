@@ -17,10 +17,10 @@
 #define POWERBAUD	B115200
 #define POWERDEV	"/dev/ttyUSB0"
 
+////TODO: recalibrate with new device code in place..
 //#define RMS2AMP(r)	(((double)r)/5.89)
 #define RMS2AMP(r)	(((double)r)/4.73-0.67)
 
-//static byte lookup[]={0xb7,0x11,0xad,0x3d,0x1b,0x3e,0xbe,0x15,0xbf,0x1f,0x9f,0x0ba,0xa6,0xb9,0xae,0x8e};
 
 static char lline[80];
 
@@ -61,9 +61,11 @@ double log_rms(char *rfile, char *line, int n) {
 	return rms;
 }
 
+#if 0
+// TODO: fix up write timing (or nuke this)
 char disp[11];
 int dlen=0;
-void write_amps(double rms) {
+void write_amps(int fd, double rms) {
 	double amp = RMS2AMP(rms);
 	if (amp<0.0) amp=0.0;
 	int flr = (int)floor(amp);
@@ -81,6 +83,12 @@ void write_amps(double rms) {
 	disp[10]= '\n';
 	dlen=11;
 }
+#else
+void write_amps(int fd, double rms) {
+    // poke a byte back to the device, not displaying amps yet..
+    write(fd, "\n", 1);
+}
+#endif
 
 static struct termios oio, tio = {0};
 static int ocnt = 0;
@@ -113,7 +121,7 @@ int open_serial(char *dev) {
 }
 
 int main(int argc, char **argv) {
-	int arg, fd, n, d=0, bkg=0, l=0, s=0;
+	int arg, fd, n, bkg=0, l=0, s=0;
 	FILE *fp;
 	char line[40];
 	char *dev = POWERDEV;
@@ -194,7 +202,7 @@ retry:
 		} else if (rms) {
 			double d = log_rms(rms, line, n);
 			if (d!=0.0) {
-				write_amps(d);
+				write_amps(fd,d);
 			}
 		} else {
 			fputs(line, stdout);
@@ -209,16 +217,6 @@ retry:
 					// EOF from controlling process, quit
 					break;
 				}
-			}
-		}
-		// clock out display chars (if any)
-		if(dlen) {
-			if (++d>=10) {
-				--dlen;
-				write(fd, &disp[dlen], 1);
-				//printf("%02x,", disp[dlen]);
-				fflush(stdout);
-				d=0;
 			}
 		}
 		n = 0;
